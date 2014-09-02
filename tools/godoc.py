@@ -7,4 +7,7 @@ import sys
 
 import find_gae_sdk
 
-sys.exit(find_gae_sdk.run(['godoc'] + sys.argv[1:]))
+args = sys.argv[1:]
+if not args:
+  args = ['-http=:6060']
+sys.exit(find_gae_sdk.run(['godoc'] + args))

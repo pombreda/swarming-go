@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -67,5 +68,13 @@ func TestRoot(t *testing.T) {
 	defer ts.Close()
 
 	body := get(t, ts, "/", http.StatusOK)
-	ut.AssertEqual(t, "Root", body)
+	if len(body) < 1000 {
+		t.Fatalf("Root page is not large enough:\n%s", body)
+	}
+	if len(body) > 100000 {
+		t.Fatalf("Root page is too large:\n%s", body)
+	}
+	if !strings.Contains(body, "<title>Isolate Server</title>") {
+		t.Fatalf("Failed to find title in root page:\n%s", body)
+	}
 }

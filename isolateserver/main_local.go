@@ -7,21 +7,26 @@
 package main
 
 import (
+	"code.google.com/p/leveldb-go/leveldb"
+	"code.google.com/p/leveldb-go/leveldb/db"
 	"code.google.com/p/leveldb-go/leveldb/memdb"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"github.com/maruel/swarming-go/isolateserver/server"
 	"github.com/maruel/swarming-go/pkg/aedmz"
+	"github.com/maruel/swarming-go/pkg/ofh"
 	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"sync"
+	"time"
 )
 
 var settingsFile = "settings.json"
+var dbDir = "db"
 
 type Settings struct {
 	// Port to listen to.
@@ -31,6 +36,8 @@ type Settings struct {
 	// SSL Certificate pair.
 	PublicKey  string // cert.pem
 	PrivateKey string // key.pem
+
+	OAuth2 *ofh.OAuth2Settings
 }
 
 func readJsonFile(filePath string, object interface{}) error {
@@ -100,6 +107,11 @@ func startHTTPS(addr string, mux http.Handler, wg *sync.WaitGroup, cert, priv st
 	return l, nil
 }
 
+type KV struct {
+	K []byte
+	V []byte
+}
+
 // runServer opens the configuration files, read them, starts the server. Then
 // it waits for a Ctrl-C and quit. All the opened files are from the current
 // working directory.
@@ -107,7 +119,8 @@ func runServer() int {
 	log.SetFlags(log.Ldate | log.Lmicroseconds)
 
 	settings := &Settings{
-		Http: ":8080",
+		Http:   ":8080",
+		OAuth2: ofh.MakeOAuth2Settings(),
 	}
 	if err := readJsonFile(settingsFile, settings); err != nil {
 		err = writeJsonFile(settingsFile, settings)
@@ -125,20 +138,78 @@ func runServer() int {
 		return 1
 	}
 
+	saveSettings := func() {
+		s.OAuth2.InstalledApp.Lock()
+		defer s.OAuth2.InstalledApp.Unlock()
+		if s.OAuth2.InstalledApp.ShouldSave() {
+			log.Printf("Saving settings.")
+			s.OAuth2.InstalledApp.ClearDirtyBit()
+			if err := writeJsonFile(settingsFile, s); err != nil {
+				log.Printf("Failed to save settings: %s", err)
+			}
+		}
+	}
+	defer saveSettings()
+
 	// Handle Ctrl-C.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt)
 
+	useDb := false
+	var db db.DB
+	var err error
+	if useDb {
+		// Sadly, the implementation returned by this function is incomplete so
+		// until Find() is implemented in leveldb.go, roll out our adhoc el cheapos
+		// serialization to have something working. This is very inefficient.
+		db, err = leveldb.Open(dbDir, nil)
+	} else {
+		kv := make([]KV, 0)
+		count := 0
+		readJsonFile(dbDir, &kv)
+		db = memdb.New(nil)
+		for _, line := range kv {
+			db.Set(line.K, line.V, nil)
+			count += 1
+		}
+		log.Printf("Loaded DB with %d items.", count)
+	}
+
+	defer func() {
+		count := 0
+		itr := db.Find([]byte{}, nil)
+		if useDb {
+			for itr.Next() {
+				count += 1
+			}
+			log.Printf("Flushing DB with %d items.", count)
+			// Technically, all iterators must be invalidated first. In practice, we
+			// barely try to guarantee this.
+			db.Close()
+		} else {
+			kv := make([]KV, 0)
+			for itr.Next() {
+				kv = append(kv, KV{itr.Key(), itr.Value()})
+				count += 1
+			}
+			log.Printf("Flushing DB with %d items.", count)
+			if err := writeJsonFile(dbDir, kv); err != nil {
+				log.Printf("Failed to save %s: %s", dbDir, err)
+			}
+		}
+	}()
+
 	// Notes:
 	// - On AppEngine, the instance's name and version is used instead.
 	// - To log to both a file and os.Stderr, use io.TeeWriter.
+	// - Use &s.OAuth2.InstalledApp to force the use of installed app credentials
+	//   when both are available.
 	// TODO(maruel): the application name should be retrieved from app.yaml and
 	// used as the default.
-	app := aedmz.NewApp("isolateserver-dev", "v0.1", os.Stderr, nil, memdb.New(nil))
+	app := aedmz.NewApp("isolateserver-dev", "v0.1", os.Stderr, s.OAuth2, db)
 
 	// TODO(maruel): Load index.yaml to configure the secondary indexes on the db.
 	// TODO(maruel): Load app.yaml to add routes to support static/
-	var err error
 	var wg sync.WaitGroup
 	sockets := make([]net.Listener, 0, 2)
 	if settings.Http != "" {
@@ -168,7 +239,15 @@ func runServer() int {
 		log.Printf("Listening HTTPS on %s", settings.Https)
 	}
 
-	<-quit
+	stillRun := true
+	for stillRun {
+		select {
+		case <-quit:
+			stillRun = false
+		case <-time.After(time.Minute):
+			saveSettings()
+		}
+	}
 
 	for _, listener := range sockets {
 		listener.Close()

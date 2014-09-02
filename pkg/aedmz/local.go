@@ -11,11 +11,14 @@ package aedmz
 import (
 	"bytes"
 	leveldbdb "code.google.com/p/leveldb-go/leveldb/db"
+	"encoding/json"
+	"errors"
 	"fmt"
 	gorillaContext "github.com/gorilla/context"
 	"github.com/maruel/swarming-go/pkg/ofh"
 	"io"
 	"net/http"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -56,9 +59,18 @@ type appContext struct {
 	appVersion      string
 	out             io.Writer
 	ongoingRequests sync.WaitGroup // To enable orderly shutdown.
+	db              dbContext
 	oauth2          ofh.OAuth2ClientProvider
 	impl            AppContextImpl
 	logService      logServiceContext
+	cache           Cache // Application global cache. In practice it should be a memcache server.
+
+	// BUG(maruel): Secondary indexes. The will be completely reconstructed on
+	// load and not saved to disk for now to keep things simple. This is needed
+	// to support queries.
+	//
+	//lock sync.Mutex
+	//secondaryIndexes map[string]*memdb.DB
 }
 
 // NewApp returns a new AppContextLocal.
@@ -81,9 +93,11 @@ func NewAppInternal(appID, appVersion string, out io.Writer, p ofh.OAuth2ClientP
 		appID:      appID,
 		appVersion: appVersion,
 		out:        out,
+		db:         dbContext{db: db},
 		oauth2:     p,
 		impl:       impl,
 		logService: logServiceContext{records: make([]*Record, 0)},
+		cache:      makeInMemoryCache(10 * 1024 * 1024), // Default global application cache size is 10 MB.
 	}
 }
 
@@ -149,6 +163,8 @@ func (a *appContext) WaitForOngoingRequests() {
 // requestContext holds the local references for a single HTTP request.
 type requestContext struct {
 	app    *appContext
+	User   *User
+	cache  Cache // Request local cache.
 	lock   sync.Mutex
 	record *Record
 	r      http.RoundTripper
@@ -187,7 +203,7 @@ func (r *requestContext) getTransport() http.RoundTripper {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	if r.r == nil {
-		r.r = http.DefaultTransport
+		r.r = &roundTripper{http.DefaultTransport, r}
 	}
 	return r.r
 }
@@ -198,6 +214,141 @@ func (r *requestContext) HttpClient() (*http.Client, error) {
 
 func (r *requestContext) OAuth2HttpClient(scope string) (*http.Client, error) {
 	return r.app.oauth2.GetClient(scope, r.getTransport())
+}
+
+// User handling.
+
+// User holds information about the currently logged in user for this specific
+// request.
+type User struct {
+	Email string
+	ID    string
+	Admin bool
+}
+
+func (r *requestContext) UserCurrent() *User {
+	// BUG(maruel): Use 3-legged OAuth2 when authenticating the user.
+	return r.User
+}
+
+// DB handling.
+
+type dbContext struct {
+	db   leveldbdb.DB
+	lock sync.Mutex
+}
+
+func (d *dbContext) GetMulti(keys []*Key, objects interface{}, results chan<- *OpResult) {
+	if reflect.TypeOf(objects).Kind() != reflect.Slice {
+		results <- &OpResult{Err: errors.New("Failed to cast to []interface{}")}
+		return
+	}
+	value := reflect.ValueOf(objects)
+	objectsLen := value.Len()
+	if objectsLen != len(keys) {
+		results <- &OpResult{Err: fmt.Errorf("Length mismatch: len(keys) %d != len(objects) %s", len(keys), objectsLen)}
+		return
+	}
+	for i := range keys {
+		if data, err := d.db.Get([]byte(keys[i].Encode()), nil); err == leveldbdb.ErrNotFound {
+			results <- &OpResult{
+				Key:   keys[i],
+				Index: i,
+				Err:   ErrNotFound,
+			}
+		} else {
+			// Retrieves the item index 'i' to unmarshal into this one specifically.
+			// Multiple unrelated objects can be retrieved as one call via a
+			// []interface{} slice, so no assumption can be done on the underlying
+			// type. On the other hand, an []struct slice has to be treated
+			// specifically.
+			// This
+			item := value.Index(i)
+			dst := item.Addr().Interface()
+			err = json.Unmarshal(data, dst)
+			results <- &OpResult{Key: keys[i], Index: i, Result: item.Interface(), Err: err}
+		}
+	}
+}
+
+func (d *dbContext) PutMulti(keys []*Key, objects interface{}, results chan<- *OpResult) {
+	// TODO(maruel): Update secondary indexes.
+	if reflect.TypeOf(objects).Kind() != reflect.Slice {
+		results <- &OpResult{Err: errors.New("Failed to cast to []interface{}")}
+		return
+	}
+	value := reflect.ValueOf(objects)
+	objectsLen := value.Len()
+	if objectsLen != len(keys) {
+		results <- &OpResult{Err: fmt.Errorf("Length mismatch: len(keys) %d != len(objects) %s", len(keys), objectsLen)}
+		return
+	}
+	for i := range keys {
+		item := value.Index(i).Interface()
+		if data, err := json.Marshal(item); err != nil {
+			results <- &OpResult{Key: keys[i], Index: i, Err: err}
+		} else {
+			err = d.db.Set([]byte(keys[i].Encode()), data, nil)
+			results <- &OpResult{Key: keys[i], Index: i, Err: err}
+		}
+	}
+}
+
+func (d *dbContext) DeleteMulti(keys []*Key, results chan<- *OpResult) {
+	// TODO(maruel): Update secondary indexes.
+	for i := range keys {
+		err := d.db.Delete([]byte(keys[i].Encode()), nil)
+		if err == leveldbdb.ErrNotFound {
+			err = ErrNotFound
+		}
+		results <- &OpResult{Key: keys[i], Index: i, Err: err}
+	}
+}
+
+func (d *dbContext) RunInTransaction(tx func(db DB) error) error {
+	d.lock.Lock()
+	defer d.lock.Lock()
+	return tx(d)
+}
+
+func (r *requestContext) GetMulti(keys []*Key, objects interface{}, results chan<- *OpResult) {
+	r.app.db.GetMulti(keys, objects, results)
+}
+
+func (r *requestContext) PutMulti(keys []*Key, objects interface{}, results chan<- *OpResult) {
+	r.app.db.PutMulti(keys, objects, results)
+}
+
+func (r *requestContext) DeleteMulti(keys []*Key, results chan<- *OpResult) {
+	r.app.db.DeleteMulti(keys, results)
+}
+
+func (r *requestContext) UncachedDB() TransactionDB {
+	return &r.app.db
+}
+
+// Cache.
+
+func (r *requestContext) CacheGet(key *Key, results chan<- *OpResult) {
+	// Note: while not technically necessary, it is done here to be similar to
+	// what the AppEngine aedmz layer does.
+	// Looks up in-process request-locale cache, then external cache.
+	cacheResults := make(chan *OpResult)
+	r.cache.CacheGet(key, cacheResults)
+	cacheResult := <-cacheResults
+	if cacheResult.Err == nil {
+		// It is present in the local cache, use this.
+		results <- cacheResult
+		return
+	}
+
+	// Lookup the global cache.
+	r.app.cache.CacheGet(key, results)
+}
+
+func (r *requestContext) CacheSet(key *Key, object interface{}, expiration time.Duration) {
+	r.cache.CacheSet(key, object, expiration)
+	r.app.cache.CacheSet(key, object, expiration)
 }
 
 // Logger: The API is designed against Go GAE's one.
@@ -419,4 +570,29 @@ func (r *requestContext) ScanLogs(start, end time.Time, minLevel int, versions [
 
 func (r *requestContext) GetLogEntry(requestIDs []string, entries chan<- *Record) {
 	r.app.logService.GetLogEntry(requestIDs, entries)
+}
+
+// Task handling.
+
+func (r *requestContext) TaskEnqueue(url, taskName string, payload []byte) error {
+	go func() {
+		// BUG(maruel): Define retries mechanism instead of hardcoding it.
+
+		// BUG(maruel): Decide if tasks are lost when shutting down the server or
+		// if they are saved in the DB (preferable).
+
+		backoff := 5 * time.Second
+		for i := 0; i < 5; i++ {
+			resp, err := http.Post(url, "application/octet-stream", bytes.NewReader(payload))
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == 200 {
+					return
+				}
+			}
+			time.Sleep(backoff)
+			backoff = backoff * 2
+		}
+	}()
+	return nil
 }

@@ -1,1 +1,5 @@
+/isolateserver/db
 /isolateserver/isolateserver
+/isolateserver/key.pem
+/isolateserver/privatekey.p12
+/isolateserver/settings.json
