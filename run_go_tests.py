@@ -11,8 +11,13 @@ import signal
 import subprocess
 import sys
 import time
+import threading
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+sys.path.insert(0, os.path.join(ROOT_DIR, 'third_party', 'swarming_client'))
+
+import threading_utils
 
 
 def find_all_testable_packages(root_dir):
@@ -62,55 +67,50 @@ def timed_call(cmd, cwd, piped):
   return p.returncode, duration, out
 
 
-def run_test_directory(cmd, verbose, directory, align, offset):
+def run_test_directory(cmd, verbose, directory, name):
   """Runs a single test directory.
 
   In Go, all the *_test.go in a directory collectively make up the unit test for
   this package. So a "directory" is a "test".
   """
-  if verbose:
-    # In this case, do not capture output, it is directly output to stdout.
-    sys.stdout.write('%-*s ...\n' % (align, directory[offset:]))
-    sys.stdout.flush()
-    returncode, duration, _ = timed_call(cmd, directory, False)
-    if returncode:
-      sys.stdout.write('\n... FAILED  %3.1fs\n' % duration)
-    else:
-      sys.stdout.write('... SUCCESS %3.1fs\n\n' % duration)
-  else:
-    # Capture the output but only print it in the case the test failed.
-    sys.stdout.write('%-*s ... ' % (align, directory[offset:]))
-    sys.stdout.flush()
-    returncode, duration, out = timed_call(cmd, directory, True)
-    if returncode:
-      sys.stdout.write('FAILED  %3.1fs\n' % duration)
-      sys.stdout.flush()
-      sys.stdout.write(out)
-      sys.stdout.write('\n')
-    else:
-      sys.stdout.write('SUCCESS %3.1fs\n' % duration)
-  sys.stdout.flush()
-  return returncode
+  out = name
+  returncode, duration, output = timed_call(cmd, directory, True)
+  if returncode or verbose:
+    out = '%s\n%s\n' % (name, output.strip())
+  return name, returncode, out
 
 
 def run_tests(cmd, verbose):
   """Runs all the Go tests in all the subdirectories of ROOT_DIR."""
-  directories = find_all_testable_packages(ROOT_DIR)
-  # offset and align are used to align test names in run_test_directory(), so
-  # all test names are properly aligned.
-  offset = len(ROOT_DIR) + 1
-  align = max(map(len, directories)) - offset
-  for directory in sorted(directories):
+  directories = sorted(find_all_testable_packages(ROOT_DIR))
+  for directory in directories:
     precompile(cmd, directory)
 
-  # TODO(maruel): Run them concurrently.
-  for directory in sorted(directories):
-    returncode = run_test_directory(cmd, verbose, directory, align, offset)
-    if returncode:
-      # Quit early, life is short.
-      return returncode
+  # Especially the GAE testing framework is ridiculously dog slow.
+  offset = len(ROOT_DIR) + 1
+  size = len(directories)
+  progress = threading_utils.Progress([('index', 0), ('total', 0)])
+  result = 0
+  with threading_utils.ThreadPool(size, size, 0) as pool:
+    names = set()
+    for directory in directories:
+      name = directory[offset:]
+      names.add(name)
+      progress.update_item(name, total=1)
+      progress.print_update()
+      pool.add_task(0, run_test_directory, cmd, verbose, directory, name)
 
-  return 0
+    progress.update_item(','.join(sorted(names)))
+    progress.print_update()
+    for name, returncode, out in pool.iter_results():
+      progress.update_item(name, index=1)
+      names.remove(name)
+      progress.print_update()
+      result = result or returncode
+      progress.update_item('\n' + ','.join(sorted(names)))
+      progress.print_update()
+  print('')
+  return result
 
 
 def main():

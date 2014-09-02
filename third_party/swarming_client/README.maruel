@@ -1,0 +1,11 @@
+Name: swarming.client
+Short Name: swarming.client
+URL: https://code.google.com/p/swarming/
+Revision: 7460565bfc81538aaf54098f276e9e96cbe3e748
+License: Apache v2.0
+
+Description:
+Simple threading utility module.
+
+Local Modifications:
+Only kept client/utils/threading_utils.py.
