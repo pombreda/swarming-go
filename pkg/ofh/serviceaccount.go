@@ -28,6 +28,10 @@ import (
 //
 //   $ openssl pkcs12 -in <key.p12> -nocerts -passin pass:notasecret -nodes -out <key.pem>
 type ServiceAccount struct {
+	// It should be a number that can be retrieved via
+	// https://code.google.com/apis/console/ through a twisted maze of links.
+	// See https://developers.google.com/storage/docs/projects for more details.
+	ProjectID    string
 	ClientID     string // Currently not used.
 	EmailAddress string
 	PrivateKey   string
@@ -100,6 +104,7 @@ func (s *ServiceAccount) GetClient(scope string, r http.RoundTripper) (*http.Cli
 	t := &transport{
 		token:       tok,
 		accessToken: accessToken,
+		projectID:   s.ProjectID,
 		transport:   r,
 	}
 	return &http.Client{Transport: t}, nil

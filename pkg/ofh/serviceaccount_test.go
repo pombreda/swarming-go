@@ -22,6 +22,7 @@ func TestServiceAccount(t *testing.T) {
 	blob := x509.MarshalPKCS1PrivateKey(key)
 	block := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: blob})
 	s := &ServiceAccount{
+		AppID:        "a",
 		ClientID:     "c",
 		EmailAddress: "e",
 		PrivateKey:   string(block),

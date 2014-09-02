@@ -25,6 +25,34 @@ type OAuth2ClientProvider interface {
 	GetClient(scope string, r http.RoundTripper) (*http.Client, error)
 }
 
+// OAuth2Settings is a serializable struct that holds the oauth2 information to
+// identify this server to a remote service.
+//
+// It is a grab bag instance that can be used when you don't know in advance if
+// the application will use a user token or a service account token. The
+// service account will be used first if configured.
+type OAuth2Settings struct {
+       InstalledApp   InstalledApp
+       ServiceAccount ServiceAccount
+}
+
+// MakeOAuth2Settings returns an initialized OAuth2Settings instance with
+// commonly used parameters.
+func MakeOAuth2Settings() *OAuth2Settings {
+       return &OAuth2Settings{
+               InstalledApp: *MakeInstalledApp(),
+       }
+}
+
+// GetClient returns a local client style OAuth2 http.Client with the
+// configured credentials.
+func (o *OAuth2Settings) GetClient(scope string, r http.RoundTripper) (*http.Client, error) {
+       if o.ServiceAccount.ClientID != "" {
+               return o.ServiceAccount.GetClient(scope, r)
+       }
+       return o.InstalledApp.GetClient(scope, r)
+}
+
 // StubProvider implements OAuth2ClientProvider but doesn't do anything, it is
 // only meant for testing.
 type StubProvider struct {
