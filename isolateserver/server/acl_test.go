@@ -6,7 +6,7 @@ package server
 
 import (
 	"errors"
-	"github.com/maruel/swarming-go/pkg/aedmztest"
+	"github.com/maruel/aedmztest"
 	"github.com/maruel/ut"
 	"testing"
 	"time"

@@ -9,7 +9,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/maruel/swarming-go/pkg/aedmz"
+	"github.com/maruel/aedmz"
 	"io"
 	"net/http"
 )

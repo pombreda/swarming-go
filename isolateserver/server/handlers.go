@@ -17,7 +17,7 @@ import (
 	"fmt"
 	gorillaContext "github.com/gorilla/context"
 	"github.com/gorilla/mux"
-	"github.com/maruel/swarming-go/pkg/aedmz"
+	"github.com/maruel/aedmz"
 	"hash"
 	"io"
 	"io/ioutil"

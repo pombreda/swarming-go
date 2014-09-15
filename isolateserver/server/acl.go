@@ -14,7 +14,7 @@ import (
 	"errors"
 	"fmt"
 	gorillaContext "github.com/gorilla/context"
-	"github.com/maruel/swarming-go/pkg/aedmz"
+	"github.com/maruel/aedmz"
 	"net/http"
 	"strconv"
 	"strings"

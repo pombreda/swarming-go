@@ -6,7 +6,7 @@ package server
 
 import (
 	"bytes"
-	"github.com/maruel/swarming-go/pkg/aedmztest"
+	"github.com/maruel/aedmztest"
 	"github.com/maruel/ut"
 	"io"
 	"io/ioutil"

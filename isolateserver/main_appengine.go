@@ -7,8 +7,8 @@
 package main
 
 import (
+	"github.com/maruel/aedmz"
 	"github.com/maruel/swarming-go/isolateserver/server"
-	"github.com/maruel/swarming-go/pkg/aedmz"
 	"net/http"
 )
 

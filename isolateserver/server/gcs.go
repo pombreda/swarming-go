@@ -20,7 +20,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"fmt"
-	"github.com/maruel/swarming-go/pkg/aedmz"
+	"github.com/maruel/aedmz"
 	"io"
 	"io/ioutil"
 	"net/url"

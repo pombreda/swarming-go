@@ -11,7 +11,7 @@ package server
 // TODO(maruel): Add frontend to edit the values.
 
 import (
-	"github.com/maruel/swarming-go/pkg/aedmz"
+	"github.com/maruel/aedmz"
 )
 
 // GlobalConfig represents application wide settings for this specific server
