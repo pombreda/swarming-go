@@ -91,7 +91,7 @@ func startHTTP(addr string, mux http.Handler, wg *sync.WaitGroup) (net.Listener,
 
 func startHTTPS(addr string, mux http.Handler, wg *sync.WaitGroup, cert, priv string) (net.Listener, error) {
 	if cert == "" || priv == "" {
-		return nil, fmt.Errorf("both public and private keys must be specified. If you don't want https support, change the port.")
+		return nil, fmt.Errorf("both public and private keys must be specified, if you don't want https support, change the port")
 	}
 	c, err := tls.LoadX509KeyPair(cert, priv)
 	if err != nil {

@@ -69,6 +69,7 @@ func parseTemplate(src ...string) *template.Template {
 	return t
 }
 
+// SendTemplate writes a template into an output buffer.
 func SendTemplate(w io.Writer, templateName string, obj interface{}) {
 	// TODO(maruel): Inject AppVersion.
 	_ = templates[templateName].ExecuteTemplate(w, "base", obj)
