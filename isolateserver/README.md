@@ -6,6 +6,9 @@ isolateserver.py. isolateserver.py is often used by through 'isolate.py
 archive'. See the design doc and main pages for more information on the Swarming
 project page at https://code.google.com/p/swarming.
 
+See
+[![GoDoc](https://godoc.org/github.com/maruel/swarming-go/isolateserver?status.svg)](https://godoc.org/github.com/maruel/swarming-go/isolateserver)
+
 
 Running the server locally
 --------------------------
@@ -26,9 +29,10 @@ Uploading to AppEngine
 Smoke testing
 -------------
 
-To test this code, either upload to AppEngine or start a local instance and run:
+To test this code, either upload to AppEngine or start a local instance and run
+from the python client code:
 
-  $ ../../client/tools/isolateserver_load_test.py <host>
+  $ client/tools/isolateserver_load_test.py <host>
 
 
 Documentation
