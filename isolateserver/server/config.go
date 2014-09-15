@@ -30,7 +30,7 @@ type GlobalConfig struct {
 	GSBucket string `datastore:"gs_bucket,noindex"`
 
 	// Email address of Service account used to access Google Storage.
-	GSClientIdEmail string `datastore:"gs_client_id_email,noindex"`
+	GSClientIDEmail string `datastore:"gs_client_id_email,noindex"`
 
 	// Secret key used to sign Google Storage URLs: base64 encoded *.der file.
 	// TODO(maruel): Should be store as []byte but kept as string for

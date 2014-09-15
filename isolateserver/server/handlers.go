@@ -32,11 +32,12 @@ import (
 type contextKeyType int
 
 const (
-	// Current protocol version.
-	ISOLATE_PROTOCOL_VERSION = "1.0"
+	// IsolateProtocolVersion is the current protocol version.
+	IsolateProtocolVersion = "1.0"
 
-	// Default expiration time for signed links.
-	DEFAULT_LINK_EXPIRATION = 4 * time.Hour
+	// DefaultLinkExpiration is the default expiration time for signed Google
+	// Cloud Storage links.
+	DefaultLinkExpiration = 4 * time.Hour
 
 	routerKey contextKeyType = 0
 )
@@ -84,7 +85,7 @@ type ContentEntry struct {
 	ExpandedSize int64 `datastore:"expanded_size"`
 
 	// The content stored inline. This is only valid if the content was smaller
-	// than MIN_SIZE_FOR_GS.
+	// than MinSizeForGS.
 	Content []byte `datastore:"content"`
 
 	// The day the content was last accessed. This is used to determine when
@@ -114,7 +115,7 @@ func (c *ContentEntry) isCompressed(key *aedmz.Key) bool {
 func createEntry(c aedmz.RequestContext, namespace, hashKey string) (*ContentEntry, error) {
 	length := getHash(namespace).Size() * 2
 	if ok, _ := regexp.MatchString(fmt.Sprintf("^[a-f0-9]{%d}$", length), hashKey); !ok {
-		return nil, fmt.Errorf("Given an invalid key: %s", hashKey)
+		return nil, fmt.Errorf("given an invalid key: %s", hashKey)
 	}
 
 	k := aedmz.NewKey("ContentNamespace", namespace, nil)
@@ -141,13 +142,13 @@ func (c *ContentEntry) gsFilepath(key *aedmz.Key) string {
 	return fmt.Sprintf("%s/%s", key.Parent.StringID, c.GSFilename)
 }
 
-func (e *ContentEntry) purge(c aedmz.RequestContext, key *aedmz.Key, bucket string) error {
-	err := aedmz.Delete(c, key)
+func (c *ContentEntry) purge(r aedmz.RequestContext, key *aedmz.Key, bucket string) error {
+	err := aedmz.Delete(r, key)
 	if err != nil {
 		return err
 	}
 	// The key is also the file name.
-	return deleteFile(c, bucket, key.StringID)
+	return deleteFile(r, bucket, key.StringID)
 }
 
 // Utilities.
@@ -229,7 +230,7 @@ func internalVerifyWorkerHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(maruel): saveToMemcache := e.Size <= MAX_MEMCACHE_ISOLATED && e.IsIsolated
+	// TODO(maruel): saveToMemcache := e.Size <= MaxMemcacheIsolated && e.IsIsolated
 
 	// Start a loop where it reads the data in block.
 	stream, err := readFile(c, bucket, gsFilepath)
@@ -291,7 +292,7 @@ func handshakeHandler(w http.ResponseWriter, r *http.Request) {
 	// This handler is called to get the token, there's nothing to enforce yet.
 	c := aedmz.GetContext(r)
 	h := &handshakeRequest{Pusher: true, Fetcher: true}
-	reply := &handshakeResponse{ProtocolVersion: ISOLATE_PROTOCOL_VERSION, ServerAppVersion: c.AppVersion()}
+	reply := &handshakeResponse{ProtocolVersion: IsolateProtocolVersion, ServerAppVersion: c.AppVersion()}
 	if err := json.NewDecoder(r.Body).Decode(h); err != nil {
 		reply.Error = fmt.Sprintf("Invalid body for handshake call.\nError: %s", err)
 		w.WriteHeader(400)
@@ -352,15 +353,15 @@ func retrieveContentHandler(w http.ResponseWriter, r *http.Request) {
 	// TODO(maruel): The GS object may not exist anymore, the ContentEntry entity
 	// should be deleted.
 
-	signer := newURLSigner(c, s.GSBucket, s.GSClientIdEmail, s.GSPrivateKey)
+	signer := newURLSigner(c, s.GSBucket, s.GSClientIDEmail, s.GSPrivateKey)
 	// Redirect client to this URL. If 'Range' header is used, client will
 	// correctly pass it to Google Storage to fetch only subrange of file,
 	// so update stats accordingly.
 	// TODO(maruel): Make it permanent?
 	f := fmt.Sprintf("%s/%s", namespace, e.GSFilename)
-	destUrl := signer.GetDownloadURL(f, 0)
-	c.Infof("-> %s", destUrl)
-	http.Redirect(w, r, destUrl, http.StatusFound)
+	destURL := signer.GetDownloadURL(f, 0)
+	c.Infof("-> %s", destURL)
+	http.Redirect(w, r, destURL, http.StatusFound)
 	// TODO(maruel): Add.
 	//stats.log(stats.RETURN, entry.size - offset, 'GS; %s' % e.GSFilename)
 }
@@ -424,12 +425,12 @@ func generatePushURLs(router *mux.Router, r *http.Request, privateKey string, s 
 	}
 	if shouldPushToGS(entry) {
 		// Store larger stuff in Google Storage.
-		uploadURL := s.GetUploadURL(fmt.Sprintf("%s/%s", namespace, entry.HexDigest), DEFAULT_LINK_EXPIRATION, "application/octet-stream", nil)
-		url.RawQuery = generateStoreURLQueryParams(privateKey, entry, namespace, "POST", true, DEFAULT_LINK_EXPIRATION, token)
+		uploadURL := s.GetUploadURL(fmt.Sprintf("%s/%s", namespace, entry.HexDigest), DefaultLinkExpiration, "application/octet-stream", nil)
+		url.RawQuery = generateStoreURLQueryParams(privateKey, entry, namespace, "POST", true, DefaultLinkExpiration, token)
 		return []string{uploadURL, url.String()}
 	}
 	// Store smallish entries and *.isolated in Datastore directly.
-	url.RawQuery = generateStoreURLQueryParams(privateKey, entry, namespace, "PUT", false, DEFAULT_LINK_EXPIRATION, token)
+	url.RawQuery = generateStoreURLQueryParams(privateKey, entry, namespace, "PUT", false, DefaultLinkExpiration, token)
 	return []string{url.String(), ""}
 }
 
@@ -495,7 +496,7 @@ func preUploadContentHandler(w http.ResponseWriter, r *http.Request) {
 		sendError(c, w, 500, "Internal error")
 		return
 	}
-	signer := newURLSigner(c, s.GSBucket, s.GSClientIdEmail, s.GSPrivateKey)
+	signer := newURLSigner(c, s.GSBucket, s.GSClientIDEmail, s.GSPrivateKey)
 	existing := make([]string, 0)
 	count := len(p)
 	reply := make([][]string, count)
@@ -505,14 +506,14 @@ func preUploadContentHandler(w http.ResponseWriter, r *http.Request) {
 		case x := <-ch:
 			if x > 0 {
 				// Missing.
-				x -= 1
+				x--
 				reply[x] = generatePushURLs(router, r, s.GSPrivateKey, signer, &p[x], namespace, token)
 			} else {
 				// Present.
-				x = 1 + x
+				x++
 				existing = append(existing, p[x].HexDigest)
 			}
-			retrieved += 1
+			retrieved++
 		}
 		if retrieved == count {
 			break
@@ -678,7 +679,7 @@ func storeContentHandler(w http.ResponseWriter, r *http.Request) {
 		compressedSize = int64(fileInfo.Size)
 	}
 	// Data is here and it's too large for DS, so put it in GS.
-	if content != nil && len(content) >= MIN_SIZE_FOR_GS {
+	if content != nil && len(content) >= MinSizeForGS {
 		if err := writeFile(c, gsBucket, gsFilepath, content); err != nil {
 			// Returns 503 so the client automatically retries.
 			sendError(c, w, 503, "Unable to save the content to GS.")
@@ -702,7 +703,7 @@ func storeContentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// If it's not in GS then put it inline.
 	if !uploadedToGS {
-		//assert content is not None and len(content) < MIN_SIZE_FOR_GS
+		//assert content is not None and len(content) < MinSizeForGS
 		entry.Content = content
 	} else {
 		// Start saving Datastore entry.
@@ -725,7 +726,7 @@ func storeContentHandler(w http.ResponseWriter, r *http.Request) {
 	// it's not in Datastore: there's no point in saving inline blobs in memcache
 	// because ndb already memcaches them.
 	// TODO(maruel): DB automatic cache. Eh.
-	if content != nil && entry.Content == nil && entry.IsIsolated && entry.Size <= MAX_MEMCACHE_ISOLATED {
+	if content != nil && entry.Content == nil && entry.IsIsolated && entry.Size <= MaxMemcacheIsolated {
 		// TODO(maruel): futures.append(save_in_memcache(namespace, hash_key, content, async=True))
 	}
 	// Log stats.

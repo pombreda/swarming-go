@@ -28,6 +28,7 @@ import (
 var settingsFile = "settings.json"
 var dbDir = "db"
 
+// Settings is the local server settings.
 type Settings struct {
 	// Port to listen to.
 	HTTP  string // :8080
@@ -40,36 +41,36 @@ type Settings struct {
 	OAuth2 *ofh.OAuth2Settings
 }
 
-func readJsonFile(filePath string, object interface{}) error {
+func readJSONFile(filePath string, object interface{}) error {
 	f, err := os.Open(filePath)
 	if err != nil {
-		return fmt.Errorf("Failed to open %s: %s", filePath, err)
+		return fmt.Errorf("failed to open %s: %s", filePath, err)
 	}
 	defer func() {
 		_ = f.Close()
 	}()
 	if err = json.NewDecoder(f).Decode(object); err != nil {
-		return fmt.Errorf("Failed to decode %s: %s", filePath, err)
+		return fmt.Errorf("failed to decode %s: %s", filePath, err)
 	}
 	return nil
 }
 
-// writeJsonFile writes object as json encoded into filePath with 2 spaces indentation.
-func writeJsonFile(filePath string, object interface{}) error {
+// writeJSONFile writes object as json encoded into filePath with 2 spaces indentation.
+func writeJSONFile(filePath string, object interface{}) error {
 	d, err := json.MarshalIndent(object, "", "  ")
 	if err != nil {
-		return fmt.Errorf("Failed to encode %s: %s", filePath, err)
+		return fmt.Errorf("failed to encode %s: %s", filePath, err)
 	}
 
 	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return fmt.Errorf("Failed to open %s: %s", filePath, err)
+		return fmt.Errorf("failed to open %s: %s", filePath, err)
 	}
 	defer func() {
 		_ = f.Close()
 	}()
 	if _, err := f.Write(d); err != nil {
-		return fmt.Errorf("Failed to write %s: %s", filePath, err)
+		return fmt.Errorf("failed to write %s: %s", filePath, err)
 	}
 	return nil
 }
@@ -77,7 +78,7 @@ func writeJsonFile(filePath string, object interface{}) error {
 func startHTTP(addr string, mux http.Handler, wg *sync.WaitGroup) (net.Listener, error) {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to listed on %s: %s", addr, err)
+		return nil, fmt.Errorf("failed to listed on %s: %s", addr, err)
 	}
 	srv := &http.Server{Addr: addr, Handler: mux}
 	wg.Add(1)
@@ -90,15 +91,15 @@ func startHTTP(addr string, mux http.Handler, wg *sync.WaitGroup) (net.Listener,
 
 func startHTTPS(addr string, mux http.Handler, wg *sync.WaitGroup, cert, priv string) (net.Listener, error) {
 	if cert == "" || priv == "" {
-		return nil, fmt.Errorf("Both public and private keys must be specified. If you don't want https support, change the port.")
+		return nil, fmt.Errorf("both public and private keys must be specified. If you don't want https support, change the port.")
 	}
 	c, err := tls.LoadX509KeyPair(cert, priv)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to load certificates %s/%s: %s", cert, priv, err)
+		return nil, fmt.Errorf("failed to load certificates %s/%s: %s", cert, priv, err)
 	}
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to listed on %s: %s", addr, err)
+		return nil, fmt.Errorf("failed to listed on %s: %s", addr, err)
 	}
 	srv := &http.Server{Addr: addr, Handler: mux}
 	config := &tls.Config{NextProtos: []string{"http/1.1"}, Certificates: []tls.Certificate{c}}
@@ -111,6 +112,7 @@ func startHTTPS(addr string, mux http.Handler, wg *sync.WaitGroup, cert, priv st
 	return l, nil
 }
 
+// KV is a key-value element in the DB.
 type KV struct {
 	K []byte
 	V []byte
@@ -126,8 +128,8 @@ func runServer() int {
 		HTTP:   ":8080",
 		OAuth2: ofh.MakeOAuth2Settings(),
 	}
-	if err := readJsonFile(settingsFile, settings); err != nil {
-		err = writeJsonFile(settingsFile, settings)
+	if err := readJSONFile(settingsFile, settings); err != nil {
+		err = writeJSONFile(settingsFile, settings)
 		if err != nil {
 			log.Printf("Failed to initialize settings. %s", err)
 			return 1
@@ -148,7 +150,7 @@ func runServer() int {
 		if settings.OAuth2.InstalledApp.ShouldSave() {
 			log.Printf("Saving settings.")
 			settings.OAuth2.InstalledApp.ClearDirtyBit()
-			if err := writeJsonFile(settingsFile, settings); err != nil {
+			if err := writeJSONFile(settingsFile, settings); err != nil {
 				log.Printf("Failed to save settings: %s", err)
 			}
 		}
@@ -170,11 +172,11 @@ func runServer() int {
 	} else {
 		kv := make([]KV, 0)
 		count := 0
-		_ = readJsonFile(dbDir, &kv)
+		_ = readJSONFile(dbDir, &kv)
 		db = memdb.New(nil)
 		for _, line := range kv {
 			_ = db.Set(line.K, line.V, nil)
-			count += 1
+			count++
 		}
 		log.Printf("Loaded DB with %d items.", count)
 	}
@@ -184,7 +186,7 @@ func runServer() int {
 		itr := db.Find([]byte{}, nil)
 		if useDb {
 			for itr.Next() {
-				count += 1
+				count++
 			}
 			log.Printf("Flushing DB with %d items.", count)
 			// Technically, all iterators must be invalidated first. In practice, we
@@ -194,10 +196,10 @@ func runServer() int {
 			kv := make([]KV, 0)
 			for itr.Next() {
 				kv = append(kv, KV{itr.Key(), itr.Value()})
-				count += 1
+				count++
 			}
 			log.Printf("Flushing DB with %d items.", count)
-			if err := writeJsonFile(dbDir, kv); err != nil {
+			if err := writeJSONFile(dbDir, kv); err != nil {
 				log.Printf("Failed to save %s: %s", dbDir, err)
 			}
 		}

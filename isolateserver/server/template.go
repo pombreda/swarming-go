@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 )
 
-var templates map[string]*template.Template = map[string]*template.Template{}
+var templates = map[string]*template.Template{}
 
 func init() {
 	var baseDir string
@@ -32,18 +32,19 @@ func init() {
 	}
 }
 
+// LoadTemplates loads all the templates in the specified directory.
 func LoadTemplates(baseDir string) error {
 	files, err := filepath.Glob(baseDir + "*.html")
 	if err != nil {
-		return fmt.Errorf("Failed to glob %s: %s", baseDir, err)
+		return fmt.Errorf("failed to glob %s: %s", baseDir, err)
 	}
 	if len(files) == 0 {
-		return fmt.Errorf("No template found in %s", baseDir)
+		return fmt.Errorf("no template found in %s", baseDir)
 	}
 	// TODO(maruel): Permits a more arbitrary include tree.
 	b, err := ioutil.ReadFile(baseDir + "skeleton.html")
 	if err != nil {
-		return fmt.Errorf("Failed to read base.html in %s", baseDir)
+		return fmt.Errorf("failed to read base.html in %s", baseDir)
 	}
 	skeleton := string(b)
 	for _, f := range files {
@@ -53,7 +54,7 @@ func LoadTemplates(baseDir string) error {
 		}
 		b, err := ioutil.ReadFile(f)
 		if err != nil {
-			return fmt.Errorf("Failed to read %s: %s", f, err)
+			return fmt.Errorf("failed to read %s: %s", f, err)
 		}
 		templates[name] = parseTemplate(skeleton, string(b))
 	}

@@ -81,7 +81,7 @@ func rangeRequest(c *http.Client, url string, start, end int64) (io.ReadCloser, 
 		return nil, err
 	}
 	if resp.StatusCode != 206 {
-		return nil, fmt.Errorf("Unexpected code %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected code %d", resp.StatusCode)
 	}
 	return resp.Body, err
 }
@@ -93,7 +93,7 @@ func getSize(c *http.Client, url string) (int64, error) {
 		return 0, err
 	}
 	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("Unexpected code %d", resp.StatusCode)
+		return 0, fmt.Errorf("unexpected code %d", resp.StatusCode)
 	}
 	return resp.ContentLength, err
 }

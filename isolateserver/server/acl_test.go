@@ -62,12 +62,12 @@ func TestGenerateToken(t *testing.T) {
 
 	// Ensure backward is not accepted.
 	result, err = validateToken(actualToken, accessID, secret, now.Add(-1).Add(-tokenExpiration))
-	ut.AssertEqual(t, errors.New("Token is in the future"), err)
+	ut.AssertEqual(t, errors.New("token is in the future"), err)
 	ut.AssertEqual(t, map[string]string(nil), result)
 
 	// Ensure expired is not accepted.
 	result, err = validateToken(actualToken, accessID, secret, now.Add(tokenExpiration))
-	ut.AssertEqual(t, errors.New("Token expired 7200 sec ago"), err)
+	ut.AssertEqual(t, errors.New("token expired 7200 sec ago"), err)
 	ut.AssertEqual(t, map[string]string(nil), result)
 }
 

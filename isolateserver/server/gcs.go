@@ -269,7 +269,7 @@ func deleteFile(c aedmz.RequestContext, bucket, filePath string) error {
 func getService(c aedmz.RequestContext, scope string) (*storage.Service, error) {
 	hc, err := c.OAuth2HTTPClient(scope)
 	if err != nil {
-		return nil, fmt.Errorf("No OAuth2 client: %s", err)
+		return nil, fmt.Errorf("no OAuth2 client: %s", err)
 	}
 	return storage.New(hc)
 }

@@ -9,20 +9,23 @@ import (
 )
 
 const (
-	// The minimum size, in bytes, an entry must be before it gets stored in
-	// Google Cloud Storage, otherwise it is stored as a blob property.
-	MIN_SIZE_FOR_GS = 501
+	// MinSizeForGS is the minimum size, in bytes, an entry must be before it
+	// gets stored in Google Cloud Storage, otherwise it is stored as a blob
+	// property.
+	MinSizeForGS = 501
 
-	// The minimum size, in bytes, for entry that get's uploaded directly to
-	// Google Cloud Storage, bypassing App engine layer.
-	MIN_SIZE_FOR_DIRECT_GS = 20 * 1024
+	// MinSizeForDirectGS is the minimum size, in bytes, for entry that get's
+	// uploaded directly to Google Cloud Storage, bypassing App engine layer.
+	MinSizeForDirectGS = 20 * 1024
 
-	// Maximum size of file stored in GS to be saved in memcache. The value must
-	// be small enough so that the whole content can safely fit in memory.
-	MAX_MEMCACHE_ISOLATED = 500 * 1024
+	// MaxMemcacheIsolated is the maximum size of file stored in GS to be saved
+	// in memcache. The value must be small enough so that the whole content can
+	// safely fit in memory.
+	MaxMemcacheIsolated = 500 * 1024
 )
 
-// FileEntry represents a single entry to store on the server in a specific namespace.
+// FileEntry represents a single entry to store on the server in a specific
+// namespace.
 //
 // The namespace implies the compression and hashing algorithm.
 type FileEntry struct {
@@ -46,9 +49,9 @@ func (f *FileEntry) IsValid(re *regexp.Regexp) bool {
 // directly to GS.
 func shouldPushToGS(entry *FileEntry) bool {
 	// Relatively small *.isolated files go through app engine to cache them.
-	if entry.IsIsolated != 0 && entry.Size <= MAX_MEMCACHE_ISOLATED {
+	if entry.IsIsolated != 0 && entry.Size <= MaxMemcacheIsolated {
 		return false
 	}
 	// All other large enough files go through GS.
-	return entry.Size >= MIN_SIZE_FOR_DIRECT_GS
+	return entry.Size >= MinSizeForDirectGS
 }
