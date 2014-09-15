@@ -30,8 +30,8 @@ var dbDir = "db"
 
 type Settings struct {
 	// Port to listen to.
-	Http  string // :8080
-	Https string // :10443
+	HTTP  string // :8080
+	HTTPS string // :10443
 
 	// SSL Certificate pair.
 	PublicKey  string // cert.pem
@@ -45,7 +45,9 @@ func readJsonFile(filePath string, object interface{}) error {
 	if err != nil {
 		return fmt.Errorf("Failed to open %s: %s", filePath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	if err = json.NewDecoder(f).Decode(object); err != nil {
 		return fmt.Errorf("Failed to decode %s: %s", filePath, err)
 	}
@@ -63,7 +65,9 @@ func writeJsonFile(filePath string, object interface{}) error {
 	if err != nil {
 		return fmt.Errorf("Failed to open %s: %s", filePath, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	if _, err := f.Write(d); err != nil {
 		return fmt.Errorf("Failed to write %s: %s", filePath, err)
 	}
@@ -79,7 +83,7 @@ func startHTTP(addr string, mux http.Handler, wg *sync.WaitGroup) (net.Listener,
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		srv.Serve(l)
+		_ = srv.Serve(l)
 	}()
 	return l, nil
 }
@@ -102,7 +106,7 @@ func startHTTPS(addr string, mux http.Handler, wg *sync.WaitGroup, cert, priv st
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		srv.Serve(l2)
+		_ = srv.Serve(l2)
 	}()
 	return l, nil
 }
@@ -119,7 +123,7 @@ func runServer() int {
 	log.SetFlags(log.Ldate | log.Lmicroseconds)
 
 	settings := &Settings{
-		Http:   ":8080",
+		HTTP:   ":8080",
 		OAuth2: ofh.MakeOAuth2Settings(),
 	}
 	if err := readJsonFile(settingsFile, settings); err != nil {
@@ -133,18 +137,18 @@ func runServer() int {
 		return 2
 	}
 
-	if settings.Http == "" && settings.Https == "" {
+	if settings.HTTP == "" && settings.HTTPS == "" {
 		log.Printf("At least one of http or https must be set.")
 		return 1
 	}
 
 	saveSettings := func() {
-		s.OAuth2.InstalledApp.Lock()
-		defer s.OAuth2.InstalledApp.Unlock()
-		if s.OAuth2.InstalledApp.ShouldSave() {
+		settings.OAuth2.InstalledApp.Lock()
+		defer settings.OAuth2.InstalledApp.Unlock()
+		if settings.OAuth2.InstalledApp.ShouldSave() {
 			log.Printf("Saving settings.")
-			s.OAuth2.InstalledApp.ClearDirtyBit()
-			if err := writeJsonFile(settingsFile, s); err != nil {
+			settings.OAuth2.InstalledApp.ClearDirtyBit()
+			if err := writeJsonFile(settingsFile, settings); err != nil {
 				log.Printf("Failed to save settings: %s", err)
 			}
 		}
@@ -166,10 +170,10 @@ func runServer() int {
 	} else {
 		kv := make([]KV, 0)
 		count := 0
-		readJsonFile(dbDir, &kv)
+		_ = readJsonFile(dbDir, &kv)
 		db = memdb.New(nil)
 		for _, line := range kv {
-			db.Set(line.K, line.V, nil)
+			_ = db.Set(line.K, line.V, nil)
 			count += 1
 		}
 		log.Printf("Loaded DB with %d items.", count)
@@ -185,7 +189,7 @@ func runServer() int {
 			log.Printf("Flushing DB with %d items.", count)
 			// Technically, all iterators must be invalidated first. In practice, we
 			// barely try to guarantee this.
-			db.Close()
+			_ = db.Close()
 		} else {
 			kv := make([]KV, 0)
 			for itr.Next() {
@@ -206,37 +210,37 @@ func runServer() int {
 	//   when both are available.
 	// TODO(maruel): the application name should be retrieved from app.yaml and
 	// used as the default.
-	app := aedmz.NewApp("isolateserver-dev", "v0.1", os.Stderr, s.OAuth2, db)
+	app := aedmz.NewApp("isolateserver-dev", "v0.1", os.Stderr, settings.OAuth2, db)
 
 	// TODO(maruel): Load index.yaml to configure the secondary indexes on the db.
 	// TODO(maruel): Load app.yaml to add routes to support static/
 	var wg sync.WaitGroup
 	sockets := make([]net.Listener, 0, 2)
-	if settings.Http != "" {
+	if settings.HTTP != "" {
 		mux := http.NewServeMux()
 		server.SetupHandlers(mux, app)
 		var listener net.Listener
-		listener, err = startHTTP(settings.Http, mux, &wg)
+		listener, err = startHTTP(settings.HTTP, mux, &wg)
 		if err != nil {
 			log.Printf("%s", err)
 			quit <- os.Interrupt
 		} else {
 			sockets = append(sockets, listener)
 		}
-		log.Printf("Listening HTTP on %s", settings.Http)
+		log.Printf("Listening HTTP on %s", settings.HTTP)
 	}
 
-	if err == nil && settings.Https != "" {
+	if err == nil && settings.HTTPS != "" {
 		mux := http.NewServeMux()
 		server.SetupHandlers(mux, app)
-		listener, err := startHTTPS(settings.Https, mux, &wg, settings.PublicKey, settings.PrivateKey)
+		listener, err := startHTTPS(settings.HTTPS, mux, &wg, settings.PublicKey, settings.PrivateKey)
 		if err != nil {
 			log.Printf("%s", err)
 			quit <- os.Interrupt
 		} else {
 			sockets = append(sockets, listener)
 		}
-		log.Printf("Listening HTTPS on %s", settings.Https)
+		log.Printf("Listening HTTPS on %s", settings.HTTPS)
 	}
 
 	stillRun := true
@@ -250,7 +254,7 @@ func runServer() int {
 	}
 
 	for _, listener := range sockets {
-		listener.Close()
+		_ = listener.Close()
 	}
 
 	// TODO(maruel): Only wait 1 minute.

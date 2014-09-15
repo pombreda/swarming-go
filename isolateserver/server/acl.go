@@ -134,7 +134,7 @@ func generateHMACSignature(secret []byte, str []string) []byte {
 		}
 	}
 	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte(strings.Join(str, "\x00")))
+	_, _ = mac.Write([]byte(strings.Join(str, "\x00")))
 	return mac.Sum(nil)[:hmacHashBytes]
 }
 
@@ -288,7 +288,7 @@ func ACL(handler http.HandlerFunc) http.HandlerFunc {
 		}
 		if r.Method == "POST" || r.Method == "PUT" {
 			// TODO(maruel): This adds an implicit 10mb limit on POST.
-			r.ParseForm()
+			_ = r.ParseForm()
 			a.TokenData = enforceValidToken(c, a.AccessID, r.Form.Get("token"))
 			if a.TokenData == nil {
 				c.Warningf("Invalid token")

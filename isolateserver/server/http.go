@@ -36,12 +36,12 @@ func sendData(c aedmz.RequestContext, w http.ResponseWriter, data []byte, filena
 	if offset == 0 {
 		// Returning an entire file.
 		w.WriteHeader(200)
-		w.Write(data)
+		_, _ = w.Write(data)
 	} else {
 		// Returning a partial content, set Content-Range header.
 		w.WriteHeader(206)
 		w.Header().Add("Content-Range", fmt.Sprintf("bytes %d-%d/%d", offset, len(data)-1, len(data)))
-		w.Write(data[offset:])
+		_, _ = w.Write(data[offset:])
 	}
 }
 

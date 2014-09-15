@@ -77,7 +77,7 @@ func (u *urlSigner) generateSignature(dataToSign []byte) string {
 		return "fakesig"
 	}
 	h := sha256.New()
-	h.Write(dataToSign)
+	_, _ = h.Write(dataToSign)
 	s, err := rsa.SignPKCS1v15(rand.Reader, u.privateKey, crypto.SHA256, h.Sum(nil))
 	if err != nil {
 		u.c.Errorf("Failed to sign: %s", err)
@@ -163,7 +163,7 @@ tryagain:
 	if err != nil {
 		if err == io.EOF {
 			// Grab the next item right away.
-			c.currentItem.Close()
+			_ = c.currentItem.Close()
 			c.currentItem = nil
 			c.c.Infof("Completed a chunk %d", c.chunkSize)
 			c.chunkSize = 0
@@ -179,7 +179,7 @@ tryagain:
 
 func (c *chainedReadCloser) Close() error {
 	if c.currentItem != nil {
-		c.currentItem.Close()
+		_ = c.currentItem.Close()
 		c.currentItem = nil
 	}
 	if c.chain != nil {
@@ -194,7 +194,7 @@ func (c *chainedReadCloser) Close() error {
 // https://developers.google.com/appengine/docs/go/urlfetch/#Go_Quotas_and_limits
 // for updated values.
 func readFile(c aedmz.RequestContext, bucket, filePath string) (io.ReadCloser, error) {
-	hc, err := c.OAuth2HttpClient(storage.DevstorageRead_onlyScope)
+	hc, err := c.OAuth2HTTPClient(storage.DevstorageRead_onlyScope)
 	if err != nil {
 		return nil, err
 	}
@@ -267,7 +267,7 @@ func deleteFile(c aedmz.RequestContext, bucket, filePath string) error {
 
 // getService returns a wrapped http client that can be used to send RPCs to GS.
 func getService(c aedmz.RequestContext, scope string) (*storage.Service, error) {
-	hc, err := c.OAuth2HttpClient(scope)
+	hc, err := c.OAuth2HTTPClient(scope)
 	if err != nil {
 		return nil, fmt.Errorf("No OAuth2 client: %s", err)
 	}

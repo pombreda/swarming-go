@@ -5,7 +5,7 @@
 package server
 
 import (
-	"github.com/maruel/aedmztest"
+	"github.com/maruel/aedmz/aedmztest"
 	"github.com/maruel/ut"
 	"testing"
 )

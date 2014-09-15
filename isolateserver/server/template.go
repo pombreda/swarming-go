@@ -70,5 +70,5 @@ func parseTemplate(src ...string) *template.Template {
 
 func SendTemplate(w io.Writer, templateName string, obj interface{}) {
 	// TODO(maruel): Inject AppVersion.
-	templates[templateName].ExecuteTemplate(w, "base", obj)
+	_ = templates[templateName].ExecuteTemplate(w, "base", obj)
 }

@@ -174,7 +174,9 @@ func expandAndHashContent(r io.ReadCloser, namespace string) (string, int64, err
 	if err != nil {
 		return "", 0, err
 	}
-	defer e.Close()
+	defer func() {
+		_ = e.Close()
+	}()
 	count, err := io.Copy(h, e)
 	return hex.EncodeToString(h.Sum(nil)), count, err
 }
@@ -216,14 +218,14 @@ func internalVerifyWorkerHandler(w http.ResponseWriter, r *http.Request) {
 		// missing only if it wasn't stored at all or it was deleted, in any case
 		// it's not a valid ContentEntry.
 		c.Errorf("No such GS file")
-		e.purge(c, k, bucket)
+		_ = e.purge(c, k, bucket)
 		return
 	}
 
 	// Expected stored length and actual length should match.
 	if fileInfo.Size != uint64(e.Size) {
 		c.Errorf("Bad GS file: expected size is %d, actual size is %d", e.Size, fileInfo.Size)
-		e.purge(c, k, bucket)
+		_ = e.purge(c, k, bucket)
 		return
 	}
 
@@ -233,18 +235,18 @@ func internalVerifyWorkerHandler(w http.ResponseWriter, r *http.Request) {
 	stream, err := readFile(c, bucket, gsFilepath)
 	if err != nil {
 		c.Errorf("Failed to read GS file")
-		e.purge(c, k, bucket)
+		_ = e.purge(c, k, bucket)
 		return
 	}
 	hexDigest, expandedSize, err := expandAndHashContent(stream, namespace)
 	if err != nil {
 		c.Errorf("Expansion failure: %s", err)
-		e.purge(c, k, bucket)
+		_ = e.purge(c, k, bucket)
 		return
 	}
 	if hexDigest != hashKey {
 		c.Errorf("Hash do not match, got %s (%d bytes expanded)", hexDigest, expandedSize)
-		e.purge(c, k, bucket)
+		_ = e.purge(c, k, bucket)
 		return
 	}
 	//if saveToMemcache {
@@ -372,7 +374,7 @@ func generateSignature(secretKey, httpVerb, expiration, namespace, hashKey, item
 	s := []string{httpVerb, expiration, namespace, hashKey, itemSize, isIsolated, uploadedToGS}
 	// Note that it is creating the signature on the base64 encoded key, not the decoded one.
 	mac := hmac.New(sha1.New, []byte(secretKey))
-	mac.Write([]byte(strings.Join(s, "\n")))
+	_, _ = mac.Write([]byte(strings.Join(s, "\n")))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
@@ -571,7 +573,7 @@ func storeContentHandler(w http.ResponseWriter, r *http.Request) {
 	namespace := vars["namespace"]
 	hashKey := vars["hashkey"]
 
-	r.ParseForm()
+	_ = r.ParseForm()
 	expirationStr := r.Form.Get("x")
 	itemSizeStr := r.Form.Get("s")
 	isIsolatedStr := r.Form.Get("i")
@@ -754,7 +756,7 @@ func storeContentHandler(w http.ResponseWriter, r *http.Request) {
 func warmUpHandler(w http.ResponseWriter, r *http.Request) {
 	c := aedmz.GetContext(r)
 	settings(c)
-	w.Write([]byte("Warmed up"))
+	_, _ = w.Write([]byte("Warmed up"))
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
